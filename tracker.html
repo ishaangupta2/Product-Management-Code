@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Package Tracking System</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 0;
+        }
+
+        h1 {
+            text-align: center;
+            color: #ff6f00;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        #map {
+            height: 500px;
+            margin: 20px auto;
+            width: 80%;
+            border-radius: 8px;
+            border: 2px solid #ff6f00;
+            position: relative;
+        }
+
+        #order-display {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background-color: white;
+            border: 2px solid #ff6f00;
+            padding: 8px 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            font-weight: bold;
+            color: #ff6f00;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+
+        #dropdown-arrow {
+            margin-left: 8px;
+            width: 8px;
+            height: 8px;
+            border: solid #ff6f00;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+            margin-bottom: 2px;
+        }
+
+        #order-dropdown {
+            display: none;
+            position: absolute;
+            top: 50px;
+            left: 15px;
+            background-color: white;
+            border: 2px solid #ff6f00;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            padding: 8px;
+        }
+
+        #order-dropdown div {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+            cursor: pointer;
+            color: #ff6f00;
+        }
+
+        #order-dropdown div:hover {
+            background-color: #ffebcc;
+        }
+
+        #control-panel {
+            width: 80%;
+            margin: auto;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        #terrain-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        #terrain-controls label, #search-controls label {
+            margin-bottom: 8px;
+        }
+
+        #terrain {
+            margin-bottom: 16px;
+            padding: 8px;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+
+        #search-controls {
+            text-align: right;
+        }
+
+        #search-controls input[type="text"] {
+            padding: 8px;
+            margin-bottom: 8px;
+            width: 250px;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+
+        #radio-buttons {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+        }
+
+        #radio-buttons label {
+            margin-left: 12px;
+        }
+
+        table {
+            width: 80%;
+            margin: 20px auto;
+            border-collapse: collapse;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            background-color: white;
+        }
+
+        th {
+            background-color: #ff6f00;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <h1>Package Tracking System</h1>
+    <div id="map">
+        <div id="order-display" onclick="toggleDropdown()">
+            Order #: <span id="current-order-number">1234</span>
+            <div id="dropdown-arrow"></div>
+        </div>
+        <div id="order-dropdown"></div>
+    </div>
+
+    <div id="control-panel">
+        <div id="terrain-controls">
+            <label for="terrain">Terrain Mode:</label>
+            <select id="terrain" onchange="changeTerrain()">
+                <option value="roadmap">Roadmap</option>
+                <option value="satellite">Satellite</option>
+                <option value="terrain">Terrain</option>
+            </select>
+        </div>
+        <div id="search-controls">
+            <div id="radio-buttons">
+                <label><input type="radio" name="search-type" value="Order Number" checked> Order Number</label>
+                <label><input type="radio" name="search-type" value="Station Name"> Station Name</label>
+                <label><input type="radio" name="search-type" value="Status"> Order Status</label>
+            </div>
+            <input type="text" id="search" onkeyup="searchOrders()" placeholder="Search...">
+        </div>
+    </div>
+
+    <table id="orders">
+        <thead>
+            <tr>
+                <th>Order Number</th>
+                <th>Station Name</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Order details will be populated here -->
+        </tbody>
+    </table>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([51.505, -0.09], 13);
+
+        var truckIcon = L.icon({
+            iconUrl: 'https://cdn.iconscout.com/icon/premium/png-256-thumb/delivery-truck-1432405-1214762.png',
+            iconSize: [38, 38],
+            iconAnchor: [22, 94],
+            popupAnchor: [-3, -76]
+        });
+
+        var truck = L.marker([51.505, -0.09], { icon: truckIcon }).addTo(map);
+
+        var deliveryPath = L.polyline([[51.505, -0.09], [51.51, -0.1]], { color: 'blue', dashArray: '5, 5' }).addTo(map);
+
+        var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        function changeTerrain() {
+            var mode = document.getElementById('terrain').value;
+            var googleModes = {
+                roadmap: 'm',
+                satellite: 's',
+                terrain: 'p'
+            };
+
+            tileLayer.setUrl(`https://mt0.google.com/vt/lyrs=${googleModes[mode]}&x={x}&y={y}&z={z}`);
+        }
+
+        function searchOrders() {
+            var input = document.getElementById("search").value.toUpperCase();
+            var searchType = document.querySelector('input[name="search-type"]:checked').value;
+            var table = document.getElementById("orders");
+            var tr = table.getElementsByTagName("tr");
+            var columnMap = { "Order Number": 0, "Station Name": 1, "Status": 2 };
+            var colIndex = columnMap[searchType];
+
+            for (var i = 1; i < tr.length; i++) {
+                var td = tr[i].getElementsByTagName("td")[colIndex];
+                if (td) {
+                    var txtValue = td.textContent || td.innerText;
+                    tr[i].style.display = txtValue.toUpperCase().indexOf(input) > -1 ? "" : "none";
+                }
+            }
+        }
+
+        var orders = [
+            { orderNumber: '1234', stationName: 'Station A', status: 'In Transit', coordinates: [51.505, -0.09] },
+            { orderNumber: '5678', stationName: 'Station B', status: 'Delivered', coordinates: [37.7749, -122.4194] },
+            { orderNumber: '2468', stationName: 'Station C', status: 'In Transit', coordinates: [-33.8688, 151.2093] }
+        ];
+
+        var tbody = document.querySelector('#orders tbody');
+        var orderDropdown = document.getElementById('order-dropdown');
+
+        orders.forEach(function(order) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + order.orderNumber + '</td><td>' + order.stationName + '</td><td>' + order.status + '</td>';
+            tbody.appendChild(tr);
+
+            var dropdownItem = document.createElement('div');
+            dropdownItem.innerText = order.orderNumber;
+            dropdownItem.onclick = function() { focusOrder(order); };
+            orderDropdown.appendChild(dropdownItem);
+        });
+
+        function initializeMap(order) {
+            clearMarkers();
+            truck = L.marker(order.coordinates, { icon: truckIcon }).addTo(map);
+
+            markers.push(L.marker(order.coordinates).addTo(map));
+            markers.push(L.marker(order.destination).addTo(map));
+
+            deliveryPath = L.polyline([order.coordinates, order.destination], { color: 'blue', dashArray: '5, 5' }).addTo(map);
+
+            map.setView(order.coordinates, 10);
+        }
+
+        function toggleDropdown() {
+            var dropdown = document.getElementById('order-dropdown');
+            dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function focusOrder(order) {
+            map.setView(order.coordinates, 10);
+            truck.setLatLng(order.coordinates);
+            document.getElementById('current-order-number').innerText = order.orderNumber;
+            toggleDropdown();
+        }
+
+        // Initialize truck with the first order
+        focusOrder(orders[0]);
+    </script>
+</body>
+</html>
